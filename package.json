@@ -1,0 +1,15 @@
+{
+  "name": "rpg-assistant-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local read-only RPG reply assistant prototype",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node server.mjs --self-test",
+    "check": "node --check server.mjs && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

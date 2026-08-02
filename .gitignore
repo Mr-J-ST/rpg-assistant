@@ -1,0 +1,6 @@
+data/scenes.json
+data/scenes.json.tmp
+*.log
+.env
+.gh-*.out
+.gh-*.err
