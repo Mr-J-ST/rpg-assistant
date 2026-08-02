@@ -1,9 +1,9 @@
 {
   "name": "rpg-assistant-prototype",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Local read-only RPG reply assistant prototype",
+  "description": "Local assistant for online text role-playing sessions",
   "scripts": {
     "start": "node server.mjs",
     "test": "node server.mjs --self-test",

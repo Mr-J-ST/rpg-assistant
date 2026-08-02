@@ -3,244 +3,112 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="description" content="本地跑团回复建议助手" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="面向线上文字跑团的本地回复建议助手" />
     <title>跑团助手 · Scene Scribe</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="ambient ambient-one"></div>
-    <div class="ambient ambient-two"></div>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
 
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <span class="die-face">20</span>
-        </div>
+        <div class="brand-mark" aria-hidden="true"><span>20</span></div>
         <div>
           <p class="eyebrow">SCENE SCRIBE</p>
           <h1>跑团助手</h1>
         </div>
       </div>
 
-      <div class="topbar-meta">
+      <div class="topbar-controls">
+        <label class="scene-switcher">
+          <span>当前场景</span>
+          <select id="sceneSelect" aria-label="切换当前场景"></select>
+        </label>
+        <button id="openLibraryButton" class="button button-secondary library-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v16H4V4Zm8 0h8v5h-8V4Zm0 7h8v9h-8v-9Z" /></svg>
+          背景资料
+        </button>
         <div id="apiStatus" class="status-pill status-loading">
           <span class="status-dot"></span>
           <span>正在检查生成服务</span>
         </div>
-        <div class="local-only" title="程序仅监听 127.0.0.1">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4.5 5.2v5.6c0 4.9 3.1 9.4 7.5 11.2 4.4-1.8 7.5-6.3 7.5-11.2V5.2L12 2Zm0 2.2 5.4 2.3v4.3c0 3.8-2.2 7.4-5.4 9-3.2-1.6-5.4-5.2-5.4-9V6.5L12 4.2Zm-.9 4.1v3H8.2v2.2h2.9v3h2.2v-3h2.9v-2.2h-2.9v-3h-2.2Z" /></svg>
-          本机运行
-        </div>
       </div>
     </header>
 
-    <main class="app-layout">
-      <aside class="scene-sidebar panel-surface">
-        <div class="sidebar-heading">
+    <main class="focus-layout">
+      <section class="focus-card context-card" aria-labelledby="contextHeading">
+        <div class="card-heading">
           <div>
-            <p class="section-kicker">资料库</p>
-            <h2>场景</h2>
-          </div>
-          <button id="newSceneButton" class="icon-button" type="button" title="新建场景" aria-label="新建场景">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" /></svg>
-          </button>
-        </div>
-
-        <div id="sceneList" class="scene-list" aria-live="polite"></div>
-
-        <div class="sidebar-tip">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2Zm2.5 11.5-.5.3V16h-4v-2.2l-.5-.3A5 5 0 1 1 14.5 13.5ZM10 20h4v2h-4v-2Z" /></svg>
-          <p><strong>分别建档更稳定</strong><br />不同模组、角色或时间线建议创建独立场景。</p>
-        </div>
-      </aside>
-
-      <section class="profile-workspace panel-surface">
-        <div class="workspace-heading">
-          <div>
-            <p class="section-kicker">当前档案</p>
-            <h2 id="currentSceneHeading">正在载入……</h2>
-          </div>
-          <span id="saveState" class="save-state">已保存</span>
-        </div>
-
-        <nav class="profile-tabs" aria-label="场景资料分类">
-          <button class="tab-button is-active" type="button" data-tab="rules">
-            <span>01</span>规则与场景
-          </button>
-          <button class="tab-button" type="button" data-tab="character">
-            <span>02</span>角色设定
-          </button>
-          <button class="tab-button" type="button" data-tab="style">
-            <span>03</span>风格与关键词
-          </button>
-        </nav>
-
-        <form id="sceneForm" autocomplete="off">
-          <div class="tab-panel is-active" data-panel="rules">
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span class="field-label">场景名称 <em>必填</em></span>
-                <input type="text" data-field="name" maxlength="160" placeholder="例如：雾港调查 · 第三幕" />
-              </label>
-              <label class="field">
-                <span class="field-label">规则系统</span>
-                <input type="text" data-field="system" maxlength="500" placeholder="例如：CoC 7版、D&D 5e、自定义规则" />
-              </label>
-            </div>
-
-            <label class="field">
-              <span class="field-label">场景概述</span>
-              <span class="field-hint">只写当前阶段真正会影响判断的地点、任务和已知信息。</span>
-              <textarea data-field="summary" rows="5" maxlength="20000" placeholder="当前发生了什么？队伍已知哪些事实？主要矛盾是什么？"></textarea>
-            </label>
-
-            <label class="field field-grow">
-              <span class="field-label">规则书与裁定边界</span>
-              <span class="field-hint">可以粘贴规则摘要、特殊机制和主持人的房规；不要让助手自行宣布未知检定结果。</span>
-              <textarea class="large-textarea" data-field="rulebook" rows="14" maxlength="180000" placeholder="录入与本场景有关的规则、技能判定、资源限制、禁用行为……"></textarea>
-              <span class="character-counter" data-counter-for="rulebook">0 / 180000</span>
-            </label>
-          </div>
-
-          <div class="tab-panel" data-panel="character" hidden>
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span class="field-label">角色名称</span>
-                <input type="text" data-field="character.name" maxlength="160" placeholder="用于自动关键词识别" />
-              </label>
-              <label class="field">
-                <span class="field-label">别名与称呼</span>
-                <input type="text" data-field="character.aliases" maxlength="2000" placeholder="用逗号或换行分隔，例如：阿岚、林调查员" />
-              </label>
-            </div>
-
-            <label class="field">
-              <span class="field-label">身份与核心特征</span>
-              <textarea data-field="character.identity" rows="4" maxlength="12000" placeholder="职业、阵营、性格核心、在队伍中的位置……"></textarea>
-            </label>
-
-            <label class="field">
-              <span class="field-label">背景经历</span>
-              <textarea data-field="character.background" rows="5" maxlength="24000" placeholder="只记录会影响当前言行和选择的重要经历。"></textarea>
-            </label>
-
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span class="field-label">当前目标</span>
-                <textarea data-field="character.goals" rows="5" maxlength="12000" placeholder="短期目的、长期执念、当前优先级……"></textarea>
-              </label>
-              <label class="field">
-                <span class="field-label">人物关系</span>
-                <textarea data-field="character.relationships" rows="5" maxlength="20000" placeholder="对队友与关键 NPC 的态度和未解决矛盾。"></textarea>
-              </label>
-            </div>
-
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span class="field-label">能力与弱点</span>
-                <textarea data-field="character.abilities" rows="5" maxlength="20000" placeholder="擅长什么、不擅长什么；避免生成越权能力。"></textarea>
-              </label>
-              <label class="field">
-                <span class="field-label">角色底线</span>
-                <textarea data-field="character.boundaries" rows="5" maxlength="12000" placeholder="绝不会做什么；遇到什么会动摇或失控。"></textarea>
-              </label>
-            </div>
-          </div>
-
-          <div class="tab-panel" data-panel="style" hidden>
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span class="field-label">整体语气</span>
-                <input type="text" data-field="style.tone" maxlength="2000" placeholder="克制、悬疑、略带冷幽默" />
-              </label>
-              <label class="field">
-                <span class="field-label">叙述视角</span>
-                <select data-field="style.perspective">
-                  <option>第一人称</option>
-                  <option>第三人称限知</option>
-                  <option>第三人称客观</option>
-                  <option>纯对话</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span class="field-label">节奏倾向</span>
-                <input type="text" data-field="style.pace" maxlength="2000" placeholder="例如：平时简洁，关键场景放慢" />
-              </label>
-              <label class="field">
-                <span class="field-label">默认篇幅</span>
-                <select data-field="style.replyLength">
-                  <option>中等</option>
-                  <option>长篇</option>
-                  <option>超长</option>
-                </select>
-              </label>
-            </div>
-
-            <label class="field">
-              <span class="field-label">偏好的写法</span>
-              <textarea data-field="style.preferences" rows="5" maxlength="12000" placeholder="例如：动作与台词交织；多用现场细节；给队友留下互动空间。"></textarea>
-            </label>
-
-            <label class="field">
-              <span class="field-label">应避免的写法</span>
-              <textarea data-field="style.avoid" rows="4" maxlength="12000" placeholder="例如：过度华丽比喻、替其他玩家决定行动、越过主持人裁定。"></textarea>
-            </label>
-
-            <label class="field keyword-field">
-              <span class="field-label">自定义关键词</span>
-              <span class="field-hint">每行一个；可使用“关键词 | 备注”。角色名与别名会自动加入，不必重复。</span>
-              <textarea id="keywordsInput" rows="8" placeholder="歌声 | 当前核心异常&#10;失踪货物 | 调查主线&#10;领航员 | 保持警惕的重要 NPC"></textarea>
-            </label>
-          </div>
-        </form>
-
-        <div class="profile-actions">
-          <button id="deleteSceneButton" class="button button-danger-ghost" type="button">删除</button>
-          <div class="action-group">
-            <button id="duplicateSceneButton" class="button button-secondary" type="button">复制场景</button>
-            <button id="saveSceneButton" class="button button-primary" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v15H5V3Zm2 2v5h8V5H7Zm0 14h10v-7H7v7Zm2-12h4V5H9v2Z" /></svg>
-              保存档案
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <aside class="assistant-panel panel-surface">
-        <div class="assistant-heading">
-          <div>
-            <p class="section-kicker">回复工坊</p>
-            <h2>上下文与生成</h2>
+            <p class="section-kicker">01 · CONTEXT</p>
+            <h2 id="contextHeading">上下文</h2>
           </div>
           <span id="activeCharacterBadge" class="character-badge">未设置角色</span>
         </div>
 
         <label class="field context-field">
-          <span class="field-label">聊天上下文</span>
-          <span class="field-hint">粘贴最近一段 QQ 聊天；越靠后的内容权重越高。</span>
-          <textarea id="chatContext" rows="11" maxlength="180000" placeholder="主持人：……&#10;队友A：……&#10;你的角色被点名，或者出现了需要回应的新情况……"></textarea>
+          <span class="field-label">最近的跑团文本</span>
+          <span class="field-hint">建议保留发言者名称，并把最新内容放在末尾。</span>
+          <textarea id="chatContext" rows="13" maxlength="180000" placeholder="主持人：……&#10;队友：……&#10;你的角色被点名，或者出现了需要回应的新情况……"></textarea>
           <span class="character-counter"><span id="contextCount">0</span> / 180000</span>
         </label>
 
-        <section class="keyword-monitor" aria-labelledby="keywordMonitorTitle">
-          <div class="monitor-heading">
-            <h3 id="keywordMonitorTitle">关键词雷达</h3>
-            <span id="keywordSummary">等待上下文</span>
+        <div class="context-actions">
+          <button id="summaryButton" class="button button-summary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Zm3 4v2h8V7H8Zm0 4v2h8v-2H8Zm0 4v2h5v-2H8Z" /></svg>
+            <span><strong>总结</strong><small>整理局势与待确认问题</small></span>
+          </button>
+          <span id="summaryHint" class="action-hint">总结会随上下文修改自动失效</span>
+        </div>
+
+        <section id="summarySection" class="result-panel summary-panel is-empty" aria-live="polite">
+          <div class="result-heading">
+            <div>
+              <p class="section-kicker">CONTEXT BRIEF</p>
+              <h3 id="summaryTitle">尚未总结</h3>
+            </div>
+            <button id="copySummaryButton" class="text-button" type="button" disabled>复制总结</button>
           </div>
-          <div id="keywordChips" class="keyword-chips">
-            <span class="empty-chip">尚未检测</span>
-          </div>
-          <div id="contextPreview" class="context-preview">粘贴上下文后，这里会高亮角色名、别名和自定义关键词。</div>
+          <div id="summaryText" class="result-text">点击“总结”，将人物立场、已知事实和待确认问题整理为独立摘要。</div>
+          <div id="summaryMeta" class="result-meta"></div>
         </section>
+
+        <details class="keyword-monitor">
+          <summary>
+            <span>关键词雷达</span>
+            <strong id="keywordSummary">等待上下文</strong>
+          </summary>
+          <div id="keywordChips" class="keyword-chips"><span class="empty-chip">尚未检测</span></div>
+          <div id="contextPreview" class="context-preview">填写上下文后，这里会高亮角色名、别名和自定义关键词。</div>
+        </details>
+      </section>
+
+      <section class="focus-card generation-card" aria-labelledby="generationHeading">
+        <div class="card-heading">
+          <div>
+            <p class="section-kicker">02 · RESPONSE</p>
+            <h2 id="generationHeading">生成</h2>
+          </div>
+        </div>
 
         <div class="generation-options">
           <label class="field">
-            <span class="field-label">这次想达到什么效果？</span>
-            <textarea id="replyGoal" rows="3" maxlength="4000" placeholder="例如：回应质疑，同时把话题引向调查仓库"></textarea>
+            <span class="field-label">语气</span>
+            <span class="field-hint">默认继承当前角色风格，也可以只为这一轮覆盖。</span>
+            <input id="replyTone" type="text" maxlength="2000" placeholder="例如：克制、坚定，保留一点冷幽默" />
+          </label>
+          <div class="tone-presets" aria-label="语气快捷选项">
+            <button type="button" data-tone="沉浸、细腻、富有画面感">沉浸叙事</button>
+            <button type="button" data-tone="简洁、明确、以行动推进为主">简洁行动</button>
+            <button type="button" data-tone="克制、悬疑、保持适度张力">悬疑克制</button>
+            <button type="button" data-tone="温和、真诚、重视对方感受">温和共情</button>
+            <button type="button" data-tone="轻松、机敏、略带幽默">轻松幽默</button>
+          </div>
+
+          <label class="field goal-field">
+            <span class="field-label">回复目标</span>
+            <textarea id="replyGoal" rows="3" maxlength="4000" placeholder="例如：回应质疑，引向仓库调查"></textarea>
           </label>
 
           <div class="field-grid two-columns compact-grid">
@@ -283,35 +151,116 @@
           <span class="generate-icon">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2Zm6 10 1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3ZM5 13l1.2 3.8L10 18l-3.8 1.2L5 23l-1.2-3.8L0 18l3.8-1.2L5 13Z" /></svg>
           </span>
-          <span><strong>生成长回复</strong><small>只生成建议，不会发送</small></span>
+          <span><strong>生成回复</strong><small>自动参考当前总结、规则与角色设定</small></span>
         </button>
 
-        <section id="outputSection" class="output-section is-empty" aria-live="polite">
-          <div class="output-heading">
+        <section id="outputSection" class="result-panel output-section is-empty" aria-live="polite">
+          <div class="result-heading">
             <div>
-              <p class="section-kicker">建议草稿</p>
+              <p class="section-kicker">SUGGESTED DRAFT</p>
               <h3 id="outputTitle">等待生成</h3>
             </div>
-            <div class="output-actions">
+            <div class="result-actions">
               <button id="copyButton" class="text-button" type="button" disabled>复制</button>
               <button id="regenerateButton" class="text-button" type="button" disabled>重写</button>
             </div>
           </div>
-          <div id="outputText" class="output-text">配置好场景并粘贴聊天上下文后，助手会在这里给出一段完整回复。</div>
-          <div id="outputMeta" class="output-meta"></div>
+          <div id="outputText" class="result-text">填写上下文、确认语气后，助手会在这里给出一段完整回复。</div>
+          <div id="outputMeta" class="result-meta"></div>
         </section>
-      </aside>
+      </section>
     </main>
+
+    <div id="backgroundOverlay" class="background-overlay" hidden>
+      <button class="drawer-backdrop" type="button" aria-label="关闭背景资料"></button>
+      <section class="background-drawer" role="dialog" aria-modal="true" aria-labelledby="drawerSceneHeading">
+        <header class="drawer-heading">
+          <div>
+            <p class="section-kicker">BACKGROUND LIBRARY</p>
+            <h2 id="drawerSceneHeading">背景资料</h2>
+          </div>
+          <div class="drawer-heading-actions">
+            <span id="saveState" class="save-state">已保存</span>
+            <button id="closeLibraryButton" class="icon-button" type="button" aria-label="关闭背景资料">×</button>
+          </div>
+        </header>
+
+        <div class="library-layout">
+          <aside class="scene-sidebar">
+            <div class="sidebar-heading">
+              <div><p class="section-kicker">资料库</p><h3>场景</h3></div>
+              <button id="newSceneButton" class="icon-button" type="button" title="新建场景" aria-label="新建场景">＋</button>
+            </div>
+            <div id="sceneList" class="scene-list" aria-live="polite"></div>
+          </aside>
+
+          <div class="profile-workspace">
+            <nav class="profile-tabs" aria-label="场景资料分类">
+              <button class="tab-button is-active" type="button" data-tab="rules"><span>01</span>规则与场景</button>
+              <button class="tab-button" type="button" data-tab="character"><span>02</span>角色设定</button>
+              <button class="tab-button" type="button" data-tab="style"><span>03</span>风格与关键词</button>
+            </nav>
+
+            <form id="sceneForm" autocomplete="off">
+              <div class="tab-panel is-active" data-panel="rules">
+                <div class="field-grid two-columns">
+                  <label class="field"><span class="field-label">场景名称 <em>必填</em></span><input type="text" data-field="name" maxlength="160" placeholder="例如：雾港调查 · 第三幕" /></label>
+                  <label class="field"><span class="field-label">规则系统</span><input type="text" data-field="system" maxlength="500" placeholder="例如：CoC 7版、D&D 5e、自定义规则" /></label>
+                </div>
+                <label class="field"><span class="field-label">场景概述</span><span class="field-hint">记录当前阶段真正会影响判断的地点、任务和已知信息。</span><textarea data-field="summary" rows="5" maxlength="20000" placeholder="当前发生了什么？队伍已知哪些事实？主要矛盾是什么？"></textarea></label>
+                <label class="field field-grow"><span class="field-label">规则书与裁定边界</span><span class="field-hint">可录入规则摘要、特殊机制和房规；助手不会自行宣布未知检定结果。</span><textarea class="large-textarea" data-field="rulebook" rows="13" maxlength="180000" placeholder="录入与本场景有关的规则、技能判定、资源限制、禁用行为……"></textarea><span class="character-counter" data-counter-for="rulebook">0 / 180000</span></label>
+              </div>
+
+              <div class="tab-panel" data-panel="character" hidden>
+                <div class="field-grid two-columns">
+                  <label class="field"><span class="field-label">角色名称</span><input type="text" data-field="character.name" maxlength="160" placeholder="用于自动关键词识别" /></label>
+                  <label class="field"><span class="field-label">别名与称呼</span><input type="text" data-field="character.aliases" maxlength="2000" placeholder="用逗号或换行分隔" /></label>
+                </div>
+                <label class="field"><span class="field-label">身份与核心特征</span><textarea data-field="character.identity" rows="4" maxlength="12000" placeholder="职业、阵营、性格核心、在队伍中的位置……"></textarea></label>
+                <label class="field"><span class="field-label">背景经历</span><textarea data-field="character.background" rows="5" maxlength="24000" placeholder="只记录会影响当前言行和选择的重要经历。"></textarea></label>
+                <div class="field-grid two-columns">
+                  <label class="field"><span class="field-label">当前目标</span><textarea data-field="character.goals" rows="5" maxlength="12000" placeholder="短期目的、长期执念、当前优先级……"></textarea></label>
+                  <label class="field"><span class="field-label">人物关系</span><textarea data-field="character.relationships" rows="5" maxlength="20000" placeholder="对队友与关键人物的态度和未解决矛盾。"></textarea></label>
+                </div>
+                <div class="field-grid two-columns">
+                  <label class="field"><span class="field-label">能力与弱点</span><textarea data-field="character.abilities" rows="5" maxlength="20000" placeholder="擅长什么、不擅长什么。"></textarea></label>
+                  <label class="field"><span class="field-label">角色底线</span><textarea data-field="character.boundaries" rows="5" maxlength="12000" placeholder="绝不会做什么；遇到什么会动摇或失控。"></textarea></label>
+                </div>
+              </div>
+
+              <div class="tab-panel" data-panel="style" hidden>
+                <div class="field-grid two-columns">
+                  <label class="field"><span class="field-label">默认语气</span><input type="text" data-field="style.tone" maxlength="2000" placeholder="克制、悬疑、略带冷幽默" /></label>
+                  <label class="field"><span class="field-label">叙述视角</span><select data-field="style.perspective"><option>第一人称</option><option>第三人称限知</option><option>第三人称客观</option><option>纯对话</option></select></label>
+                </div>
+                <div class="field-grid two-columns">
+                  <label class="field"><span class="field-label">节奏倾向</span><input type="text" data-field="style.pace" maxlength="2000" placeholder="例如：平时简洁，关键场景放慢" /></label>
+                  <label class="field"><span class="field-label">默认篇幅</span><select data-field="style.replyLength"><option>中等</option><option>长篇</option><option>超长</option></select></label>
+                </div>
+                <label class="field"><span class="field-label">偏好的写法</span><textarea data-field="style.preferences" rows="5" maxlength="12000" placeholder="动作与台词交织；利用现场细节；给队友留出互动空间。"></textarea></label>
+                <label class="field"><span class="field-label">应避免的写法</span><textarea data-field="style.avoid" rows="4" maxlength="12000" placeholder="替其他玩家决定行动、越过主持人裁定等。"></textarea></label>
+                <label class="field keyword-field"><span class="field-label">自定义关键词</span><span class="field-hint">每行一个，可使用“关键词 | 备注”。角色名与别名会自动加入。</span><textarea id="keywordsInput" rows="7" placeholder="歌声 | 当前核心异常&#10;失踪货物 | 调查主线"></textarea></label>
+              </div>
+            </form>
+
+            <div class="profile-actions">
+              <button id="deleteSceneButton" class="button button-danger-ghost" type="button">删除</button>
+              <div class="action-group">
+                <button id="duplicateSceneButton" class="button button-secondary" type="button">复制场景</button>
+                <button id="saveSceneButton" class="button button-primary" type="button">保存档案</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
     <template id="sceneItemTemplate">
       <button class="scene-item" type="button">
         <span class="scene-monogram"></span>
-        <span class="scene-copy">
-          <strong></strong>
-          <small></small>
-        </span>
+        <span class="scene-copy"><strong></strong><small></small></span>
         <span class="scene-arrow">›</span>
       </button>
     </template>
