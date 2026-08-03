@@ -18,7 +18,107 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Test-ProjectNodeExecutable {
+  param(
+    [string]$NodeExecutable,
+    [string]$ExpectedVersion
+  )
+
+  try {
+    $versionOutput = @(& $NodeExecutable --version)
+    return $LASTEXITCODE -eq 0 -and
+      $versionOutput.Count -gt 0 -and
+      $versionOutput[0].Trim() -eq "v$ExpectedVersion"
+  } catch {
+    return $false
+  }
+}
+
+function Remove-ProjectRuntimeTemporaryDirectory {
+  param(
+    [string]$TemporaryDirectory,
+    [string]$RuntimeRoot
+  )
+
+  $resolvedRuntimeRoot = [IO.Path]::GetFullPath($RuntimeRoot).TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar
+  )
+  $resolvedTemporaryDirectory = [IO.Path]::GetFullPath($TemporaryDirectory)
+  $runtimePrefix = $resolvedRuntimeRoot + [IO.Path]::DirectorySeparatorChar
+
+  if (-not $resolvedTemporaryDirectory.StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to remove a temporary directory outside the project runtime folder."
+  }
+
+  if (Test-Path -LiteralPath $resolvedTemporaryDirectory -PathType Container) {
+    Remove-Item -LiteralPath $resolvedTemporaryDirectory -Recurse -Force
+  }
+}
+
+function Get-ProjectNodeExecutable {
+  param([string]$ProjectDirectory)
+
+  $nodeVersion = "24.18.1"
+  $nodeDistribution = "node-v$nodeVersion-win-x64"
+  $nodeArchiveName = "$nodeDistribution.zip"
+  $expectedArchiveHash = "EC56B84A7551893AB2324EBDFDC4AB974A63B4781162600B68A1293CC3E53765"
+  $archivePath = Join-Path $ProjectDirectory "vendor\node\$nodeArchiveName"
+  $runtimeRoot = Join-Path $ProjectDirectory ".runtime"
+  $runtimeDirectory = Join-Path $runtimeRoot $nodeDistribution
+  $nodeExecutable = Join-Path $runtimeDirectory "node.exe"
+
+  if (Test-ProjectNodeExecutable -NodeExecutable $nodeExecutable -ExpectedVersion $nodeVersion) {
+    return $nodeExecutable
+  }
+
+  if (Test-Path -LiteralPath $runtimeDirectory -PathType Container) {
+    throw "The project-local Node.js runtime is incomplete. Delete '.runtime' in the project folder, then start again."
+  }
+
+  if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+    return $null
+  }
+
+  $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
+  if (-not $archiveHash.Equals($expectedArchiveHash, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The bundled Node.js archive failed its SHA-256 check. Download a fresh copy of the project before starting it."
+  }
+
+  New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+  $temporaryDirectory = Join-Path $runtimeRoot ("extract-" + [Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
+
+  Write-Host "首次启动：正在准备项目内置的 Node.js 运行环境……" -ForegroundColor Cyan
+  try {
+    Expand-Archive -LiteralPath $archivePath -DestinationPath $temporaryDirectory
+    $extractedDirectory = Join-Path $temporaryDirectory $nodeDistribution
+    $extractedNode = Join-Path $extractedDirectory "node.exe"
+
+    if (-not (Test-ProjectNodeExecutable -NodeExecutable $extractedNode -ExpectedVersion $nodeVersion)) {
+      throw "The bundled Node.js runtime could not be validated after extraction."
+    }
+
+    Move-Item -LiteralPath $extractedDirectory -Destination $runtimeDirectory
+  } finally {
+    try {
+      Remove-ProjectRuntimeTemporaryDirectory -TemporaryDirectory $temporaryDirectory -RuntimeRoot $runtimeRoot
+    } catch {
+      Write-Warning "Could not clean the temporary runtime folder: $($_.Exception.Message)"
+    }
+  }
+
+  return $nodeExecutable
+}
+
 function Find-NodeExecutable {
+  param([string]$ProjectDirectory)
+
+  $projectNode = Get-ProjectNodeExecutable -ProjectDirectory $ProjectDirectory
+  if ($projectNode) {
+    return $projectNode
+  }
+
   $bundledNode = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
   if (Test-Path -LiteralPath $bundledNode -PathType Leaf) {
     return $bundledNode
@@ -29,7 +129,7 @@ function Find-NodeExecutable {
     return $nodeCommand.Source
   }
 
-  throw "Node.js 20 or newer was not found. Install Node.js and try again."
+  throw "Node.js 20 or newer was not found, and this copy of the project does not include its portable runtime."
 }
 
 function Get-ExistingAssistantStatus {
@@ -231,7 +331,7 @@ if (-not (Test-Path -LiteralPath $serverFile -PathType Leaf)) {
   throw "server.mjs was not found in the project directory."
 }
 
-$nodeExecutable = Find-NodeExecutable
+$nodeExecutable = Find-NodeExecutable -ProjectDirectory $resolvedProjectDirectory
 
 if ($SelfTest -eq 1) {
   & $nodeExecutable $serverFile "--self-test"
