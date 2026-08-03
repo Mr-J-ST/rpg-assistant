@@ -127,11 +127,87 @@ function Read-LaunchMode {
   }
 }
 
+function Get-ProviderChoices {
+  return @(
+    [PSCustomObject]@{ Id = "openai"; Label = "OpenAI"; BaseUrl = "https://api.openai.com/v1"; DefaultModel = "gpt-5.6-sol"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "anthropic"; Label = "Anthropic Claude"; BaseUrl = "https://api.anthropic.com/v1"; DefaultModel = "claude-sonnet-5"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "google"; Label = "Google Gemini"; BaseUrl = "https://generativelanguage.googleapis.com/v1beta"; DefaultModel = "gemini-3.6-flash"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "deepseek"; Label = "DeepSeek"; BaseUrl = "https://api.deepseek.com"; DefaultModel = "deepseek-v4-pro"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "xai"; Label = "xAI Grok"; BaseUrl = "https://api.x.ai/v1"; DefaultModel = "grok-4.5"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "mistral"; Label = "Mistral AI"; BaseUrl = "https://api.mistral.ai/v1"; DefaultModel = "mistral-large-latest"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "openrouter"; Label = "OpenRouter"; BaseUrl = "https://openrouter.ai/api/v1"; DefaultModel = "~openai/gpt-latest"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "qwen"; Label = "阿里云百炼 Qwen"; BaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1"; DefaultModel = "qwen3.7-plus"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "kimi"; Label = "Kimi / Moonshot"; BaseUrl = "https://api.moonshot.cn/v1"; DefaultModel = "kimi-k3"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "zhipu"; Label = "智谱 GLM"; BaseUrl = "https://open.bigmodel.cn/api/paas/v4"; DefaultModel = "glm-5.2"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "minimax"; Label = "MiniMax"; BaseUrl = "https://api.minimaxi.com/v1"; DefaultModel = "MiniMax-M2.7"; ApiKeyOptional = $false },
+    [PSCustomObject]@{ Id = "custom"; Label = "自定义 OpenAI 兼容接口"; BaseUrl = "http://127.0.0.1:11434/v1"; DefaultModel = "local-model"; ApiKeyOptional = $true }
+  )
+}
+
+function Read-ProviderConfiguration {
+  $providers = @(Get-ProviderChoices)
+  while ($true) {
+    Write-Host ""
+    Write-Host "请选择模型服务商："
+    for ($index = 0; $index -lt $providers.Count; $index += 1) {
+      $defaultMark = if ($index -eq 0) { "（默认）" } else { "" }
+      Write-Host ("  [{0}] {1}{2}" -f ($index + 1), $providers[$index].Label, $defaultMark)
+    }
+    $selection = Read-Host "请输入编号，直接回车选择 OpenAI"
+    if ([string]::IsNullOrWhiteSpace($selection)) {
+      $provider = $providers[0]
+      break
+    }
+    $selectedIndex = 0
+    if ([int]::TryParse($selection.Trim(), [ref]$selectedIndex) -and $selectedIndex -ge 1 -and $selectedIndex -le $providers.Count) {
+      $provider = $providers[$selectedIndex - 1]
+      break
+    }
+    Write-Host "请输入列表中的有效编号。" -ForegroundColor Yellow
+  }
+
+  $baseUrl = $provider.BaseUrl
+  if ($provider.Id -eq "custom") {
+    $enteredBaseUrl = Read-Host "API Base URL [$baseUrl]"
+    if (-not [string]::IsNullOrWhiteSpace($enteredBaseUrl)) {
+      $baseUrl = $enteredBaseUrl.Trim().TrimEnd("/")
+    }
+    if ($baseUrl -notmatch '^https?://') {
+      throw "API Base URL 必须以 http:// 或 https:// 开头。"
+    }
+  }
+
+  $model = Read-Host ("模型 ID [{0}]" -f $provider.DefaultModel)
+  if ([string]::IsNullOrWhiteSpace($model)) {
+    $model = $provider.DefaultModel
+  } else {
+    $model = $model.Trim()
+  }
+
+  return [PSCustomObject]@{
+    Id = $provider.Id
+    Label = $provider.Label
+    BaseUrl = $baseUrl
+    Model = $model
+    ApiKeyOptional = $provider.ApiKeyOptional
+  }
+}
+
 function Read-OneTimeApiKey {
+  param(
+    [string]$ProviderLabel,
+    [bool]$AllowEmpty = $false
+  )
+
   while ($true) {
     Write-Host ""
     Write-Host "API Key 仅用于本次运行，不会写入文件或场景资料。"
-    $secureKey = Read-Host "请输入 OpenAI API Key（输入内容不会显示）" -AsSecureString
+    $prompt = if ($AllowEmpty) {
+      "请输入 $ProviderLabel API Key（本地无鉴权接口可直接回车）"
+    } else {
+      "请输入 $ProviderLabel API Key（输入内容不会显示）"
+    }
+    $secureKey = Read-Host $prompt -AsSecureString
     $keyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
     try {
       $plainKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($keyPointer)
@@ -141,6 +217,9 @@ function Read-OneTimeApiKey {
 
     if (-not [string]::IsNullOrWhiteSpace($plainKey)) {
       return $plainKey.Trim()
+    }
+    if ($AllowEmpty) {
+      return ""
     }
     Write-Host "API Key 不能为空。也可以重新启动并选择演示模式。" -ForegroundColor Yellow
   }
@@ -169,11 +248,18 @@ if (-not $existingAssistantStatus -and (Test-TcpPortInUse -Port $AssistantPort))
 }
 
 $launchMode = if ($Demo -eq 1) { "demo" } else { Read-LaunchMode }
-$previousApiKey = [Environment]::GetEnvironmentVariable("OPENAI_API_KEY", "Process")
+$managedEnvironmentNames = @("AI_PROVIDER", "AI_API_KEY", "AI_BASE_URL", "AI_DEFAULT_MODEL", "AI_ONLINE_MODE", "OPENAI_API_KEY")
+$previousEnvironment = @{}
+foreach ($environmentName in $managedEnvironmentNames) {
+  $previousEnvironment[$environmentName] = [Environment]::GetEnvironmentVariable($environmentName, "Process")
+}
+
+$onlineConfiguration = $null
 $oneTimeApiKey = $null
 
 if ($launchMode -eq "online") {
-  $oneTimeApiKey = Read-OneTimeApiKey
+  $onlineConfiguration = Read-ProviderConfiguration
+  $oneTimeApiKey = Read-OneTimeApiKey -ProviderLabel $onlineConfiguration.Label -AllowEmpty $onlineConfiguration.ApiKeyOptional
 }
 
 if ($existingAssistantStatus) {
@@ -197,11 +283,18 @@ if ($existingAssistantStatus) {
 }
 
 if ($launchMode -eq "online") {
-  [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $oneTimeApiKey, "Process")
-  Write-Host ""
-  Write-Host "将以在线模型模式启动。" -ForegroundColor Green
-} else {
+  [Environment]::SetEnvironmentVariable("AI_PROVIDER", $onlineConfiguration.Id, "Process")
+  [Environment]::SetEnvironmentVariable("AI_API_KEY", $oneTimeApiKey, "Process")
+  [Environment]::SetEnvironmentVariable("AI_BASE_URL", $onlineConfiguration.BaseUrl, "Process")
+  [Environment]::SetEnvironmentVariable("AI_DEFAULT_MODEL", $onlineConfiguration.Model, "Process")
+  [Environment]::SetEnvironmentVariable("AI_ONLINE_MODE", "1", "Process")
   [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $null, "Process")
+  Write-Host ""
+  Write-Host ("将以在线模型模式启动：{0} / {1}" -f $onlineConfiguration.Label, $onlineConfiguration.Model) -ForegroundColor Green
+} else {
+  foreach ($environmentName in $managedEnvironmentNames) {
+    [Environment]::SetEnvironmentVariable($environmentName, $null, "Process")
+  }
   Write-Host ""
   Write-Host "将以演示模式启动。" -ForegroundColor Yellow
 }
@@ -219,7 +312,9 @@ try {
   & $nodeExecutable @serverArguments
   $nodeExitCode = $LASTEXITCODE
 } finally {
-  [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $previousApiKey, "Process")
+  foreach ($environmentName in $managedEnvironmentNames) {
+    [Environment]::SetEnvironmentVariable($environmentName, $previousEnvironment[$environmentName], "Process")
+  }
   $oneTimeApiKey = $null
 }
 

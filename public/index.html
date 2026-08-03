@@ -133,12 +133,10 @@
 
           <div class="field-grid two-columns compact-grid">
             <label class="field">
-              <span class="field-label">模型</span>
-              <select id="modelSelect">
-                <option value="gpt-5.6-sol">GPT-5.6 Sol · 高质量</option>
-                <option value="gpt-5.6-terra">GPT-5.6 Terra · 均衡</option>
-                <option value="gpt-5.6-luna">GPT-5.6 Luna · 经济</option>
-              </select>
+              <span class="field-label">模型 ID</span>
+              <input id="modelSelect" type="text" list="modelOptions" maxlength="160" autocomplete="off" placeholder="输入服务商支持的模型 ID" />
+              <datalist id="modelOptions"></datalist>
+              <span class="field-hint">可选推荐模型，也可输入当前接口支持的其他模型 ID。</span>
             </label>
             <label class="field">
               <span class="field-label">附加限制</span>

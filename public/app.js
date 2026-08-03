@@ -46,6 +46,7 @@ const elements = {
   replyMode: document.querySelector("#replyMode"),
   replyLength: document.querySelector("#replyLength"),
   modelSelect: document.querySelector("#modelSelect"),
+  modelOptions: document.querySelector("#modelOptions"),
   extraConstraints: document.querySelector("#extraConstraints"),
   generateButton: document.querySelector("#generateButton"),
   regenerateButton: document.querySelector("#regenerateButton"),
@@ -148,9 +149,9 @@ function renderStatus() {
   if (!status) {
     elements.apiStatus.classList.add("status-loading");
     text.textContent = "生成服务不可用";
-  } else if (status.apiConfigured) {
+  } else if (status.generationMode === "online") {
     elements.apiStatus.classList.add("status-online");
-    text.textContent = `在线生成 · ${status.defaultModel}`;
+    text.textContent = `${status.providerLabel || "在线模型"} · ${status.defaultModel}`;
   } else {
     elements.apiStatus.classList.add("status-demo");
     text.textContent = "演示生成模式";
@@ -650,7 +651,13 @@ async function initialize() {
     state.scenes = scenePayload.scenes || [];
     state.currentId = state.scenes[0]?.id || null;
     renderStatus();
-    if (status.models?.includes(status.defaultModel)) elements.modelSelect.value = status.defaultModel;
+    elements.modelOptions.replaceChildren();
+    for (const model of status.models || []) {
+      const option = document.createElement("option");
+      option.value = model;
+      elements.modelOptions.append(option);
+    }
+    elements.modelSelect.value = status.defaultModel || "";
     renderSceneControls();
     if (currentScene()) populateSceneForm(currentScene());
   } catch (error) {
