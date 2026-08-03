@@ -134,9 +134,8 @@
           <div class="field-grid two-columns compact-grid">
             <label class="field">
               <span class="field-label">模型 ID</span>
-              <input id="modelSelect" type="text" list="modelOptions" maxlength="160" autocomplete="off" placeholder="输入服务商支持的模型 ID" />
-              <datalist id="modelOptions"></datalist>
-              <span class="field-hint">可选推荐模型，也可输入当前接口支持的其他模型 ID。</span>
+              <input id="modelSelect" type="text" maxlength="160" readonly aria-readonly="true" />
+              <span id="modelHint" class="field-hint">模型由启动窗口选择并锁定，页面请求不会覆盖它。</span>
             </label>
             <label class="field">
               <span class="field-label">附加限制</span>

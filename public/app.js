@@ -46,7 +46,7 @@ const elements = {
   replyMode: document.querySelector("#replyMode"),
   replyLength: document.querySelector("#replyLength"),
   modelSelect: document.querySelector("#modelSelect"),
-  modelOptions: document.querySelector("#modelOptions"),
+  modelHint: document.querySelector("#modelHint"),
   extraConstraints: document.querySelector("#extraConstraints"),
   generateButton: document.querySelector("#generateButton"),
   regenerateButton: document.querySelector("#regenerateButton"),
@@ -481,7 +481,7 @@ async function summarizeContext() {
     elements.summaryMeta.replaceChildren();
     const payload = await fetchJson("/api/summarize", {
       method: "POST",
-      body: JSON.stringify({ sceneId: state.currentId, chatText, model: elements.modelSelect.value }),
+      body: JSON.stringify({ sceneId: state.currentId, chatText }),
     });
     if (elements.chatContext.value.trim() !== chatText) {
       resetSummary("上下文在总结期间发生了变化，请重新总结。");
@@ -548,7 +548,6 @@ async function generateReply() {
         goal: elements.replyGoal.value,
         mode: elements.replyMode.value,
         length: elements.replyLength.value,
-        model: elements.modelSelect.value,
         extraConstraints: elements.extraConstraints.value,
       }),
     });
@@ -651,13 +650,10 @@ async function initialize() {
     state.scenes = scenePayload.scenes || [];
     state.currentId = state.scenes[0]?.id || null;
     renderStatus();
-    elements.modelOptions.replaceChildren();
-    for (const model of status.models || []) {
-      const option = document.createElement("option");
-      option.value = model;
-      elements.modelOptions.append(option);
-    }
     elements.modelSelect.value = status.defaultModel || "";
+    elements.modelHint.textContent = status.modelLocked
+      ? "模型由启动窗口选择并锁定，页面请求不会覆盖它。"
+      : "当前模型配置未锁定。";
     renderSceneControls();
     if (currentScene()) populateSceneForm(currentScene());
   } catch (error) {
