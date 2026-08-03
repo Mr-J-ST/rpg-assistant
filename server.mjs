@@ -100,6 +100,23 @@ const PROVIDER_CATALOG = Object.freeze({
   },
 });
 
+function getProviderChoices() {
+  return Object.entries(PROVIDER_CATALOG).map(([id, provider]) => ({
+    id,
+    label: provider.label,
+    baseUrl: provider.baseUrl,
+    defaultModel: provider.defaultModel,
+    models: provider.models,
+    apiKeyOptional: id === "custom",
+  }));
+}
+
+function stringifyAsciiJson(value) {
+  return JSON.stringify(value).replace(/[\u007f-\uffff]/g, (character) => (
+    `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`
+  ));
+}
+
 function resolveProviderId(value) {
   const providerId = String(value || "").trim().toLowerCase();
   return Object.hasOwn(PROVIDER_CATALOG, providerId) ? providerId : "openai";
@@ -120,8 +137,11 @@ function normalizeBaseUrl(value, fallback) {
 }
 
 function normalizeModelId(value, fallback = "") {
-  const model = String(value || fallback || "").trim().slice(0, 160);
+  const model = String(value || fallback || "").trim();
   if (!model) throw Object.assign(new Error("模型 ID 不能为空。"), { statusCode: 400 });
+  if (model.length > 160) {
+    throw Object.assign(new Error("模型 ID 不能超过 160 个字符。"), { statusCode: 400 });
+  }
   if (!/^[A-Za-z0-9._~:/@+-]+$/.test(model)) {
     throw Object.assign(new Error("模型 ID 含有不支持的字符。"), { statusCode: 400 });
   }
@@ -742,13 +762,9 @@ function createAppServer({
           provider: resolvedProviderId,
           providerLabel: provider.label,
           defaultModel: resolvedDefaultModel,
+          modelLocked: true,
           models: provider.models,
-          providers: Object.entries(PROVIDER_CATALOG).map(([id, item]) => ({
-            id,
-            label: item.label,
-            defaultModel: item.defaultModel,
-            models: item.models,
-          })),
+          providers: getProviderChoices(),
           privacy: "API Key 仅保存在当前服务器进程中，不会发送到浏览器或写入文件。",
         });
         return;
@@ -825,7 +841,7 @@ function createAppServer({
         }
 
         const matches = detectKeywords(scene, body.chatText);
-        const model = normalizeModelId(body.model, resolvedDefaultModel);
+        const model = resolvedDefaultModel;
         const startedAt = Date.now();
 
         if (!resolvedOnlineEnabled) {
@@ -881,7 +897,7 @@ function createAppServer({
         const matches = detectKeywords(scene, body.chatText);
         const lengthKey = Object.hasOwn(LENGTH_GUIDANCE, body.length) ? body.length : "long";
         const prompt = buildGenerationPrompt(scene, body, matches);
-        const model = normalizeModelId(body.model, resolvedDefaultModel);
+        const model = resolvedDefaultModel;
         const startedAt = Date.now();
 
         if (!resolvedOnlineEnabled) {
@@ -948,6 +964,8 @@ function openBrowser(url) {
 
 async function runProviderAdapterSelfTest() {
   const captured = [];
+  let appServer;
+  let appTemporaryDir;
   const mockServer = http.createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -990,10 +1008,42 @@ async function runProviderAdapterSelfTest() {
     assert.equal((await callModel({ ...shared, provider: PROVIDER_CATALOG.custom, model: "local-test" })).text, "兼容接口完成");
 
     assert.equal(captured.find((item) => item.path === "/responses")?.body.max_output_tokens, 321);
+    assert.equal(captured.find((item) => item.path === "/responses")?.body.model, "gpt-test");
     assert.equal(captured.find((item) => item.path === "/messages")?.headers["anthropic-version"], "2023-06-01");
     assert.equal(captured.find((item) => item.path?.includes(":generateContent"))?.headers["x-goog-api-key"], "test-key");
     assert.equal(captured.find((item) => item.path === "/chat/completions")?.body.messages[0].role, "system");
+
+    appTemporaryDir = await mkdtemp(path.join(os.tmpdir(), "rpg-assistant-model-lock-test-"));
+    appServer = createAppServer({
+      dataFile: path.join(appTemporaryDir, "scenes.json"),
+      providerId: "custom",
+      apiKey: "test-key",
+      apiBaseUrl,
+      defaultModel: "locked-model-v1",
+      onlineEnabled: true,
+    });
+    await new Promise((resolve, reject) => {
+      appServer.once("error", reject);
+      appServer.listen(0, "127.0.0.1", resolve);
+    });
+    const appAddress = appServer.address();
+    const appBaseUrl = `http://127.0.0.1:${appAddress.port}`;
+    const scenePayload = await fetch(`${appBaseUrl}/api/scenes`).then((response) => response.json());
+    const generated = await fetch(`${appBaseUrl}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sceneId: scenePayload.scenes[0].id,
+        chatText: "测试上下文",
+        model: "browser-overridden-model",
+        length: "medium",
+      }),
+    }).then((response) => response.json());
+    assert.equal(generated.model, "locked-model-v1");
+    assert.equal(captured.filter((item) => item.path === "/chat/completions").at(-1)?.body.model, "locked-model-v1");
   } finally {
+    if (appServer?.listening) await new Promise((resolve) => appServer.close(resolve));
+    if (appTemporaryDir) await rm(appTemporaryDir, { recursive: true, force: true });
     await new Promise((resolve) => mockServer.close(resolve));
   }
 }
@@ -1013,6 +1063,8 @@ async function runSelfTest() {
     const status = await fetch(`${baseUrl}/api/status`).then((response) => response.json());
     assert.equal(status.generationMode, "demo");
     assert.equal(status.provider, "openai");
+    assert.equal(status.defaultModel, PROVIDER_CATALOG.openai.defaultModel);
+    assert.equal(status.modelLocked, true);
     assert.ok(status.providers.some((item) => item.id === "anthropic"));
     assert.ok(status.providers.some((item) => item.id === "custom"));
 
@@ -1082,7 +1134,14 @@ async function runSelfTest() {
     assert.equal(extractAnthropicText({ content: [{ type: "text", text: "Claude 完成" }] }), "Claude 完成");
     assert.equal(extractGeminiText({ candidates: [{ content: { parts: [{ text: "Gemini 完成" }] } }] }), "Gemini 完成");
     assert.equal(normalizeModelId("provider/model:latest"), "provider/model:latest");
-    console.log("Self-test passed: storage, scene CRUD, keyword detection, summarization, prompt building, provider catalog, response parsing, and demo generation.");
+    assert.throws(() => normalizeModelId("x".repeat(161)), /160/);
+    for (const provider of getProviderChoices().filter((item) => item.id !== "custom")) {
+      assert.ok(provider.models.includes(provider.defaultModel));
+    }
+    const asciiCatalog = stringifyAsciiJson(getProviderChoices());
+    assert.doesNotMatch(asciiCatalog, /[^\x00-\x7f]/);
+    assert.equal(JSON.parse(asciiCatalog).find((item) => item.id === "qwen")?.label, "阿里云百炼 Qwen");
+    console.log("Self-test passed: storage, scene CRUD, keyword detection, summarization, prompt building, provider catalog, locked model routing, response parsing, and demo generation.");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(temporaryDir, { recursive: true, force: true });
@@ -1091,6 +1150,21 @@ async function runSelfTest() {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args.includes("--print-provider-catalog")) {
+    console.log(stringifyAsciiJson(getProviderChoices()));
+    return;
+  }
+  if (args.includes("--print-active-config")) {
+    const activeApiKey = process.env.AI_API_KEY || (DEFAULT_PROVIDER_ID === "openai" ? process.env.OPENAI_API_KEY : "");
+    console.log(stringifyAsciiJson({
+      provider: DEFAULT_PROVIDER_ID,
+      providerLabel: DEFAULT_PROVIDER.label,
+      defaultModel: DEFAULT_MODEL,
+      onlineEnabled: process.env.AI_ONLINE_MODE === "1" || Boolean(activeApiKey),
+      modelLocked: true,
+    }));
+    return;
+  }
   if (args.includes("--self-test")) {
     await runSelfTest();
     return;
@@ -1109,7 +1183,7 @@ async function main() {
       const activeApiKey = process.env.AI_API_KEY || (DEFAULT_PROVIDER_ID === "openai" ? process.env.OPENAI_API_KEY : "");
       const onlineEnabled = process.env.AI_ONLINE_MODE === "1" || Boolean(activeApiKey);
       console.log(onlineEnabled
-        ? `在线模型：${DEFAULT_PROVIDER.label} / ${DEFAULT_MODEL}`
+        ? `在线模型已锁定：${DEFAULT_PROVIDER.label} / ${DEFAULT_MODEL}`
         : "当前为演示生成模式，未调用在线模型。");
       if (!args.includes("--no-browser")) openBrowser(url);
       resolve();
@@ -1139,6 +1213,7 @@ export {
   extractGeminiText,
   extractOpenAIChatText,
   extractOutputText,
+  getProviderChoices,
   normalizeModelId,
   normalizeScene,
   PROVIDER_CATALOG,

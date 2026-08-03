@@ -228,30 +228,116 @@ function Read-LaunchMode {
 }
 
 function Get-ProviderChoices {
-  return @(
-    [PSCustomObject]@{ Id = "openai"; Label = "OpenAI"; BaseUrl = "https://api.openai.com/v1"; DefaultModel = "gpt-5.6-sol"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "anthropic"; Label = "Anthropic Claude"; BaseUrl = "https://api.anthropic.com/v1"; DefaultModel = "claude-sonnet-5"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "google"; Label = "Google Gemini"; BaseUrl = "https://generativelanguage.googleapis.com/v1beta"; DefaultModel = "gemini-3.6-flash"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "deepseek"; Label = "DeepSeek"; BaseUrl = "https://api.deepseek.com"; DefaultModel = "deepseek-v4-pro"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "xai"; Label = "xAI Grok"; BaseUrl = "https://api.x.ai/v1"; DefaultModel = "grok-4.5"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "mistral"; Label = "Mistral AI"; BaseUrl = "https://api.mistral.ai/v1"; DefaultModel = "mistral-large-latest"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "openrouter"; Label = "OpenRouter"; BaseUrl = "https://openrouter.ai/api/v1"; DefaultModel = "~openai/gpt-latest"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "qwen"; Label = "阿里云百炼 Qwen"; BaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1"; DefaultModel = "qwen3.7-plus"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "kimi"; Label = "Kimi / Moonshot"; BaseUrl = "https://api.moonshot.cn/v1"; DefaultModel = "kimi-k3"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "zhipu"; Label = "智谱 GLM"; BaseUrl = "https://open.bigmodel.cn/api/paas/v4"; DefaultModel = "glm-5.2"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "minimax"; Label = "MiniMax"; BaseUrl = "https://api.minimaxi.com/v1"; DefaultModel = "MiniMax-M2.7"; ApiKeyOptional = $false },
-    [PSCustomObject]@{ Id = "custom"; Label = "自定义 OpenAI 兼容接口"; BaseUrl = "http://127.0.0.1:11434/v1"; DefaultModel = "local-model"; ApiKeyOptional = $true }
+  param(
+    [string]$NodeExecutable,
+    [string]$ServerFile
   )
+
+  $catalogOutput = @(& $NodeExecutable $ServerFile "--print-provider-catalog")
+  if ($LASTEXITCODE -ne 0 -or $catalogOutput.Count -eq 0) {
+    throw "无法从程序读取模型服务商目录。"
+  }
+
+  try {
+    $decodedProviders = (($catalogOutput -join "`n") | ConvertFrom-Json)
+    $providers = @()
+    foreach ($decodedProvider in $decodedProviders) {
+      $providers += $decodedProvider
+    }
+  } catch {
+    throw "模型服务商目录格式无效：$($_.Exception.Message)"
+  }
+
+  if ($providers.Count -eq 0) {
+    throw "模型服务商目录为空。"
+  }
+  return $providers
+}
+
+function Read-ManualModelId {
+  param([string]$DefaultModel)
+
+  while ($true) {
+    $enteredModel = Read-Host ("请输入完整模型 ID [{0}]" -f $DefaultModel)
+    $model = if ([string]::IsNullOrWhiteSpace($enteredModel)) { $DefaultModel } else { $enteredModel.Trim() }
+    if ($model.Length -gt 160) {
+      Write-Host "模型 ID 不能超过 160 个字符。" -ForegroundColor Yellow
+      continue
+    }
+    if ($model -notmatch '^[A-Za-z0-9._~:/@+-]+$') {
+      Write-Host "模型 ID 只能包含英文字母、数字以及 . _ ~ : / @ + -。" -ForegroundColor Yellow
+      continue
+    }
+    return $model
+  }
+}
+
+function Read-ModelChoice {
+  param([object]$Provider)
+
+  $models = @($Provider.Models)
+  while ($true) {
+    Write-Host ""
+    Write-Host ("{0} 推荐模型 ID：" -f $Provider.Label)
+    for ($index = 0; $index -lt $models.Count; $index += 1) {
+      $defaultMark = if ($models[$index] -eq $Provider.DefaultModel) { "（默认）" } else { "" }
+      Write-Host ("  [{0}] {1}{2}" -f ($index + 1), $models[$index], $defaultMark)
+    }
+    if ($models.Count -eq 0) {
+      Write-Host "  此接口没有通用推荐列表，请输入接口实际支持的模型 ID。"
+    } else {
+      Write-Host "  [M] 手动输入其他模型 ID"
+    }
+
+    $selectionPrompt = if ($models.Count -eq 0) {
+      "直接回车输入模型 ID"
+    } else {
+      "请输入编号；直接回车选择默认模型；输入 M 手动填写"
+    }
+    $selection = Read-Host $selectionPrompt
+    $model = $null
+
+    if ($models.Count -eq 0) {
+      $model = Read-ManualModelId -DefaultModel $Provider.DefaultModel
+    } elseif ([string]::IsNullOrWhiteSpace($selection)) {
+      $model = $Provider.DefaultModel
+    } elseif ($selection.Trim().ToUpperInvariant() -eq "M") {
+      $model = Read-ManualModelId -DefaultModel $Provider.DefaultModel
+    } else {
+      $selectedIndex = 0
+      if ([int]::TryParse($selection.Trim(), [ref]$selectedIndex) -and $selectedIndex -ge 1 -and $selectedIndex -le $models.Count) {
+        $model = $models[$selectedIndex - 1]
+      } else {
+        Write-Host "请输入列表中的有效编号或 M。" -ForegroundColor Yellow
+        continue
+      }
+    }
+
+    Write-Host ""
+    Write-Host ("最终模型 ID：{0}" -f $model) -ForegroundColor Cyan
+    while ($true) {
+      $confirmation = Read-Host "直接回车确认；输入 R 重新选择"
+      if ([string]::IsNullOrWhiteSpace($confirmation)) {
+        return $model
+      }
+      if ($confirmation.Trim().ToUpperInvariant() -eq "R") {
+        break
+      }
+      Write-Host "请直接回车确认，或输入 R 重新选择。" -ForegroundColor Yellow
+    }
+  }
 }
 
 function Read-ProviderConfiguration {
-  $providers = @(Get-ProviderChoices)
+  param([object[]]$Providers)
+
+  $providers = @($Providers)
   while ($true) {
     Write-Host ""
     Write-Host "请选择模型服务商："
     for ($index = 0; $index -lt $providers.Count; $index += 1) {
       $defaultMark = if ($index -eq 0) { "（默认）" } else { "" }
-      Write-Host ("  [{0}] {1}{2}" -f ($index + 1), $providers[$index].Label, $defaultMark)
+      Write-Host ("  [{0}] {1}{2} — 默认模型：{3}" -f ($index + 1), $providers[$index].Label, $defaultMark, $providers[$index].DefaultModel)
     }
     $selection = Read-Host "请输入编号，直接回车选择 OpenAI"
     if ([string]::IsNullOrWhiteSpace($selection)) {
@@ -277,12 +363,7 @@ function Read-ProviderConfiguration {
     }
   }
 
-  $model = Read-Host ("模型 ID [{0}]" -f $provider.DefaultModel)
-  if ([string]::IsNullOrWhiteSpace($model)) {
-    $model = $provider.DefaultModel
-  } else {
-    $model = $model.Trim()
-  }
+  $model = Read-ModelChoice -Provider $provider
 
   return [PSCustomObject]@{
     Id = $provider.Id
@@ -358,7 +439,8 @@ $onlineConfiguration = $null
 $oneTimeApiKey = $null
 
 if ($launchMode -eq "online") {
-  $onlineConfiguration = Read-ProviderConfiguration
+  $providerChoices = @(Get-ProviderChoices -NodeExecutable $nodeExecutable -ServerFile $serverFile)
+  $onlineConfiguration = Read-ProviderConfiguration -Providers $providerChoices
   $oneTimeApiKey = Read-OneTimeApiKey -ProviderLabel $onlineConfiguration.Label -AllowEmpty $onlineConfiguration.ApiKeyOptional
 }
 
@@ -389,8 +471,19 @@ if ($launchMode -eq "online") {
   [Environment]::SetEnvironmentVariable("AI_DEFAULT_MODEL", $onlineConfiguration.Model, "Process")
   [Environment]::SetEnvironmentVariable("AI_ONLINE_MODE", "1", "Process")
   [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $null, "Process")
+  $activeConfigurationOutput = @(& $nodeExecutable $serverFile "--print-active-config")
+  if ($LASTEXITCODE -ne 0 -or $activeConfigurationOutput.Count -eq 0) {
+    throw "后端未能验证本次模型配置。"
+  }
+  $activeConfiguration = ($activeConfigurationOutput -join "`n") | ConvertFrom-Json
+  if ($activeConfiguration.Provider -ne $onlineConfiguration.Id -or
+      $activeConfiguration.DefaultModel -cne $onlineConfiguration.Model -or
+      -not $activeConfiguration.ModelLocked -or
+      -not $activeConfiguration.OnlineEnabled) {
+    throw "后端读取到的模型配置与启动向导选择不一致，已拒绝启动。"
+  }
   Write-Host ""
-  Write-Host ("将以在线模型模式启动：{0} / {1}" -f $onlineConfiguration.Label, $onlineConfiguration.Model) -ForegroundColor Green
+  Write-Host ("后端已确认并锁定模型：{0} / {1}" -f $onlineConfiguration.Label, $onlineConfiguration.Model) -ForegroundColor Green
 } else {
   foreach ($environmentName in $managedEnvironmentNames) {
     [Environment]::SetEnvironmentVariable($environmentName, $null, "Process")
