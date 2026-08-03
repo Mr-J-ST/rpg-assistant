@@ -6,41 +6,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$serverPath = Join-Path $projectDir 'server.mjs'
-$bundledNode = 'C:\Users\32313\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'
-$nodeExe = $null
+$projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$launcher = Join-Path $projectDirectory 'start-assistant.ps1'
 
-if (Test-Path -LiteralPath $bundledNode) {
-    $nodeExe = $bundledNode
-} else {
-    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
-    if ($nodeCommand) {
-        $nodeExe = $nodeCommand.Source
-    }
-}
+& $launcher `
+    -ProjectDirectory $projectDirectory `
+    -AssistantPort $Port `
+    -NoBrowser ([int]$NoBrowser.IsPresent) `
+    -SelfTest ([int]$SelfTest.IsPresent)
 
-if (-not $nodeExe) {
-    throw 'Node.js 20 or newer was not found. Install Node.js and try again.'
-}
-
-if ($SelfTest) {
-    & $nodeExe $serverPath --self-test
-    exit $LASTEXITCODE
-}
-
-$arguments = @($serverPath, '--port', $Port)
-if ($NoBrowser) {
-    $arguments += '--no-browser'
-}
-
-Write-Host ''
-Write-Host 'RPG Assistant is starting...' -ForegroundColor Cyan
-Write-Host ("URL: http://127.0.0.1:{0}" -f $Port) -ForegroundColor Green
-if (-not $env:OPENAI_API_KEY) {
-    Write-Host 'OPENAI_API_KEY is not set. Demo generation mode will be used.' -ForegroundColor Yellow
-}
-Write-Host 'Press Ctrl+C to stop.' -ForegroundColor DarkGray
-Write-Host ''
-
-& $nodeExe @arguments
+exit $LASTEXITCODE

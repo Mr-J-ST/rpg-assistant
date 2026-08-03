@@ -1,0 +1,6 @@
+Bundled runtime: Node.js v24.18.1 LTS for Windows x64
+Official source: https://nodejs.org/dist/v24.18.1/node-v24.18.1-win-x64.zip
+SHA-256: ec56b84a7551893ab2324ebdfdc4ab974a63b4781162600b68a1293cc3e53765
+
+Node.js is distributed under its own licenses. The official archive contains
+the applicable LICENSE file and third-party notices.
